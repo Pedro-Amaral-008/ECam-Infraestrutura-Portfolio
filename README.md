@@ -33,7 +33,14 @@ Fornecedor externo (cameras / telemetria)
    RAID 0 (mdadm) — volume de dados
 ```
 
-Toda a stack roda em containers Docker, com o volume de dados do banco direcionado para um RAID dedicado, separado do disco de sistema.
+Toda a stack roda em containers Docker, com o armazenamento dividido entre dois discos com propósitos distintos:
+
+| Disco | Conteúdo |
+|---|---|
+| Disco de sistema (NVMe) | Sistema operacional, Docker Engine, imagens de container, aplicação |
+| RAID 0 (discos mecânicos) | Volume de dados do PostgreSQL — todo o banco de produção |
+
+Essa separação foi uma decisão tomada **durante** a migração, não planejada desde o início: o volume do banco estava inicialmente no disco de sistema (comportamento padrão do Docker), mas o restore de um banco de grande porte colocou em risco o espaço livre disponível ali, compartilhado com SO e imagens. A solução foi realocar o volume de dados para o RAID, isolando o crescimento do banco do disco de sistema.
 
 ## Desafios tecnicos enfrentados e solucoes
 
@@ -50,7 +57,7 @@ Configuracao de RAID 0 via `mdadm`, unindo dois discos fisicos em um unico volum
 Identificacao de uma unica tabela de fila de eventos, sem rotina de limpeza, responsavel por mais de um terco do volume total do banco de origem — achado relevante para o planejamento de retencao de dados no novo ambiente.
 
 **Adaptacao de estrategia em tempo real**
-Durante o restore, deteccao de que o volume de dados excedia a capacidade do disco de sistema. Migracao da estrategia de armazenamento (bind mount para RAID) sem perder o progresso ja realizado do processo.
+Durante o restore, deteccao de que o volume de dados excedia a capacidade do disco de sistema (ver secao Arquitetura). Migracao da estrategia de armazenamento (bind mount para RAID) em pleno andamento do processo, sem perder o progresso ja realizado.
 
 **Containerizacao**
 Dockerfile multi-stage (build de frontend + runtime de backend Node.js). Orquestracao via Docker Compose. Gerenciamento de logs com rotacao, para evitar crescimento descontrolado de disco.
