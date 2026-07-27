@@ -72,6 +72,10 @@ Diagnóstico e contorno de defeito físico na porta Ethernet onboard do servidor
 Durante o transporte físico do servidor, o array RAID perdeu a assinatura (superblock) em um dos discos, levando o boot a modo de emergência. Recuperação via recriação do array com os mesmos parâmetros originais (nível, número de discos, tamanho de chunk, ordem dos discos), preservando o mapeamento físico dos dados. Validação pós-recuperação por contagem de registros no banco restaurado, conferida contra o volume original.
 
 
+**Diagnóstico e correção de performance pós-produção**
+Após a virada de produção, identificado via `iostat` um `%iowait` de até 98% e utilização de disco em 100%, mesmo com CPU e RAM ociosas — um padrão clássico de gargalo de I/O mascarado como "servidor lento". Causa raiz: o autovacuum do PostgreSQL nunca havia executado na tabela de maior volume (fila de eventos), acumulando centenas de milhares de tuplas mortas. Correção: VACUUM manual para liberar o acúmulo existente, seguido de ajuste dos parâmetros de autovacuum (reduzindo o scale factor de 20% para 2%) nas tabelas de maior rotatividade, e agendamento de manutenção preventiva semanal. Resultado: iowait caiu de 98% para ~15%, utilização de disco de 100% para ~35-40%.
+
+## Stack
 
 | Tecnologia | Funcao |
 |---|---|
@@ -90,6 +94,10 @@ Durante o transporte físico do servidor, o array RAID perdeu a assinatura (supe
 infra/
   Dockerfile
   docker-compose.example.yml
+  Caddyfile.example
+scripts/
+  vacuum-maintenance.sh
+  tune-autovacuum.sql
 ```
 
 ## Roadmap
@@ -99,6 +107,7 @@ infra/
 - [x] Migracao de dados de producao (dump/restore)
 - [x] HTTPS com dominio proprio (proxy reverso, TLS automatico, Split DNS)
 - [x] Recuperacao de incidente de RAID sem perda de dados
-- [ ] Corte de producao (virada do webhook do fornecedor externo)
+- [x] Corte de producao (virada do webhook do fornecedor externo)
+- [x] Diagnostico e correcao de performance (I/O, autovacuum)
 - [ ] Reconciliacao de dados do periodo de transicao
 - [ ] Migracao dos demais sistemas, apos aquisicao de servidor dedicado
