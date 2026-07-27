@@ -1,45 +1,75 @@
-# Migração de Sistema de Telemetria Veicular — Cloud → Self-Hosted
+# Migracao de Sistema de Telemetria — Cloud para Self-Hosted
 
-**Portfólio técnico** documentando a migração de um sistema de monitoramento de frota via câmeras veiculares (GPS, heartbeat, alarmes) de uma plataforma cloud (PaaS) para infraestrutura própria (self-hosted), com Docker.
+Portfolio tecnico documentando a migracao de um sistema de monitoramento de frota via cameras veiculares (GPS, heartbeat, alarmes) de uma plataforma cloud (PaaS) para infraestrutura fisica propria (self-hosted), com Docker.
 
-> Este repositório é uma versão sanitizada para fins de demonstração. Não contém código-fonte de aplicação, credenciais, endereços de rede reais ou qualquer informação identificável de terceiros.
+> Versao sanitizada para fins de demonstracao. Nao contem codigo-fonte de aplicacao, credenciais, enderecos de rede reais ou qualquer informacao identificavel de terceiros.
 
-## Contexto do projeto
+## Objetivo
 
-Sistema de produção com histórico de dados relevante (banco de dados na casa de centenas de GB em tamanho bruto) rodando em uma plataforma cloud, migrado para um servidor físico próprio — parte de uma iniciativa maior de trazer a infraestrutura de TI para dentro de casa, reduzindo custo recorrente e ganhando controle operacional.
+Reduzir custo recorrente de infraestrutura em nuvem e trazer controle operacional total sobre sistemas internos criticos, migrando-os para servidores fisicos proprios.
 
-## Desafios técnicos enfrentados e soluções
+## Contexto e escopo
 
-### 1. Provisionamento de servidor do zero, sem conectividade inicial
-- Rede Wi-Fi configurada via Netplan em um ambiente sem acesso à internet
-- Dependência de pacote (`wpasupplicant`) resolvida via instalação offline por pendrive, incluindo resolução de dependência transitiva (`libpcsclite1`)
+De um conjunto de multiplos sistemas internos hospedados em cloud, o de **maior custo de manutencao** foi priorizado como piloto do processo de migracao — validando a estrategia completa (dump/restore de banco de grande porte, containerizacao, armazenamento redundante) antes de replicar para os demais sistemas, que aguardam a aquisicao de um servidor dedicado de maior capacidade.
 
-### 2. Armazenamento redundante e escalável
-- Configuração de **RAID 0** via `mdadm`, unindo dois discos físicos em um único volume lógico, para acomodar volume de dados de produção sem comprometer o disco de sistema (NVMe)
-- Estratégia de separação: disco de sistema para SO/aplicação, RAID para dados de alto volume
+## Arquitetura
 
-### 3. Migração de banco de dados de grande porte
-- `pg_dump`/`pg_restore` de um banco PostgreSQL com dado bruto na casa de ~200GB, via proxy de rede pública
-- Identificação e tratamento de timeout de conexão em transferências de longa duração (parâmetros `keepalives`)
-- Execução resiliente de processos de longa duração via `tmux`, protegendo contra interrupção por queda de sessão remota
-- Identificação de tabelas com acúmulo de dados históricos sem rotina de limpeza (uma única tabela de fila de eventos representava mais de 1/3 do volume total do banco)
+```
+Fornecedor externo (cameras / telemetria)
+        |
+        v  webhook HTTPS
+   Reverse Proxy (Caddy, TLS)
+        |
+        v
+   App (Node.js / Express)
+     - API REST
+     - Painel web (React)
+     - Workers internos (fila de ingestao, motor de alertas)
+        |
+        v
+   PostgreSQL 17
+        |
+        v
+   RAID 0 (mdadm) — volume de dados
+```
 
-### 4. Containerização
-- Dockerfile multi-stage (build de frontend + runtime de backend Node.js)
-- Orquestração via Docker Compose (aplicação + PostgreSQL)
-- Gerenciamento de logs com rotação, para evitar crescimento descontrolado de disco
+Toda a stack roda em containers Docker, com o volume de dados do banco direcionado para um RAID dedicado, separado do disco de sistema.
 
-### 5. Planejamento de corte de produção (cutover)
-- Estratégia de virada com sistema fornecedor externo (webhook) apontando para o novo ambiente
-- Plano de reconciliação de dados para o intervalo entre a última cópia de dados e o corte efetivo
+## Desafios tecnicos enfrentados e solucoes
+
+**Provisionamento sem conectividade inicial**
+Configuracao de rede Wi-Fi via Netplan em um ambiente sem acesso a internet no momento da instalacao. Resolucao de dependencia de pacote (`wpasupplicant` + dependencia transitiva) via instalacao offline por pendrive.
+
+**Armazenamento de grande volume**
+Configuracao de RAID 0 via `mdadm`, unindo dois discos fisicos em um unico volume logico, para acomodar dados de producao sem comprometer o disco de sistema (NVMe, capacidade limitada). Expansao de volume logico (LVM) para liberar espaco alocado nao utilizado.
+
+**Migracao de banco de dados de grande porte**
+`pg_dump`/`pg_restore` de um banco de producao com dado bruto na casa de ~200GB, via proxy de rede publica. Identificacao e correcao de timeout de conexao em transferencias de longa duracao (parametros de keepalive). Execucao resiliente de processos de dezenas de horas via `tmux`, protegendo contra interrupcao por queda de sessao remota.
+
+**Deteccao de anomalia de dados**
+Identificacao de uma unica tabela de fila de eventos, sem rotina de limpeza, responsavel por mais de um terco do volume total do banco de origem — achado relevante para o planejamento de retencao de dados no novo ambiente.
+
+**Adaptacao de estrategia em tempo real**
+Durante o restore, deteccao de que o volume de dados excedia a capacidade do disco de sistema. Migracao da estrategia de armazenamento (bind mount para RAID) sem perder o progresso ja realizado do processo.
+
+**Containerizacao**
+Dockerfile multi-stage (build de frontend + runtime de backend Node.js). Orquestracao via Docker Compose. Gerenciamento de logs com rotacao, para evitar crescimento descontrolado de disco.
+
+**Planejamento de corte de producao**
+Estrategia de virada com sistema fornecedor externo (webhook) apontando para o novo ambiente. Plano de reconciliacao de dados para o intervalo entre a ultima copia de dados e o corte efetivo.
 
 ## Stack
 
-- Ubuntu Server 24.04 LTS
-- Docker + Docker Compose
-- PostgreSQL 17
-- Node.js 20 (Express + React/Vite)
-- RAID 0 (mdadm)
+| Tecnologia | Funcao |
+|---|---|
+| Ubuntu Server 24.04 LTS | Sistema operacional do servidor |
+| Docker / Docker Compose | Orquestracao dos containers |
+| PostgreSQL 17 | Banco de dados da aplicacao |
+| Node.js 20 (Express) | Backend / API REST |
+| React + Vite | Painel web |
+| mdadm (RAID 0) | Armazenamento de dados de producao |
+| Caddy | Reverse proxy / TLS |
+| tmux | Execucao resiliente de processos de longa duracao |
 
 ## Estrutura
 
@@ -49,3 +79,12 @@ infra/
   docker-compose.example.yml
 ```
 
+## Roadmap
+
+- [x] Provisionamento do servidor (rede, Docker, RAID)
+- [x] Containerizacao da aplicacao
+- [x] Migracao de dados de producao (dump/restore)
+- [ ] HTTPS com dominio proprio
+- [ ] Corte de producao (virada do webhook do fornecedor externo)
+- [ ] Reconciliacao de dados do periodo de transicao
+- [ ] Migracao dos demais sistemas, apos aquisicao de servidor dedicado
