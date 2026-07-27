@@ -65,7 +65,13 @@ Dockerfile multi-stage (build de frontend + runtime de backend Node.js). Orquest
 **Planejamento de corte de producao**
 Estrategia de virada com sistema fornecedor externo (webhook) apontando para o novo ambiente. Plano de reconciliacao de dados para o intervalo entre a ultima copia de dados e o corte efetivo.
 
-## Stack
+**Exposição pública e HTTPS**
+Diagnóstico e contorno de defeito físico na porta Ethernet onboard do servidor, resolvido via adaptador USB-Ethernet com IP estático. Configuração de NAT (port forward) em firewall com múltiplas WANs. Registro DNS público apontando para o IP público. Certificado TLS automático via Caddy + Let's Encrypt. Diagnóstico e correção de NAT hairpin/loopback — cenário em que o acesso ao domínio público falha apenas quando originado de dentro da própria rede — resolvido via Split DNS no resolver do firewall, fazendo o mesmo domínio resolver para IP interno de dentro da rede e IP público de fora.
+
+**Recuperação de incidente sem perda de dados**
+Durante o transporte físico do servidor, o array RAID perdeu a assinatura (superblock) em um dos discos, levando o boot a modo de emergência. Recuperação via recriação do array com os mesmos parâmetros originais (nível, número de discos, tamanho de chunk, ordem dos discos), preservando o mapeamento físico dos dados. Validação pós-recuperação por contagem de registros no banco restaurado, conferida contra o volume original.
+
+
 
 | Tecnologia | Funcao |
 |---|---|
@@ -91,7 +97,8 @@ infra/
 - [x] Provisionamento do servidor (rede, Docker, RAID)
 - [x] Containerizacao da aplicacao
 - [x] Migracao de dados de producao (dump/restore)
-- [ ] HTTPS com dominio proprio
+- [x] HTTPS com dominio proprio (proxy reverso, TLS automatico, Split DNS)
+- [x] Recuperacao de incidente de RAID sem perda de dados
 - [ ] Corte de producao (virada do webhook do fornecedor externo)
 - [ ] Reconciliacao de dados do periodo de transicao
 - [ ] Migracao dos demais sistemas, apos aquisicao de servidor dedicado

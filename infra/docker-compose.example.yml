@@ -20,8 +20,6 @@ services:
   app:
     build: .
     container_name: app
-    ports:
-      - "3003:3003"
     environment:
       NODE_ENV: production
       PORT: "3003"
@@ -36,3 +34,26 @@ services:
       options:
         max-size: "50m"
         max-file: "5"
+
+  proxy:
+    image: caddy:2-alpine
+    container_name: app-proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+volumes:
+  caddy_data:
+  caddy_config:
