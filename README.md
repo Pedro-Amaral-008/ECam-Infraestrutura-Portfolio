@@ -75,6 +75,9 @@ Durante o transporte físico do servidor, o array RAID perdeu a assinatura (supe
 **Diagnóstico e correção de performance pós-produção**
 Após a virada de produção, identificado via `iostat` um `%iowait` de até 98% e utilização de disco em 100%, mesmo com CPU e RAM ociosas — um padrão clássico de gargalo de I/O mascarado como "servidor lento". Causa raiz: o autovacuum do PostgreSQL nunca havia executado na tabela de maior volume (fila de eventos), acumulando centenas de milhares de tuplas mortas. Correção: VACUUM manual para liberar o acúmulo existente, seguido de ajuste dos parâmetros de autovacuum (reduzindo o scale factor de 20% para 2%) nas tabelas de maior rotatividade, e agendamento de manutenção preventiva semanal. Resultado: iowait caiu de 98% para ~15%, utilização de disco de 100% para ~35-40%.
 
+**Otimização de memória (correção de lentidão em consultas de tempo real)**
+Relato recorrente de lentidão em uma funcionalidade de monitoramento em tempo real, presente desde a migração inicial. Diagnóstico: o banco estava configurado com parâmetros de memória no padrão de fábrica (cache de poucos megabytes), enquanto o host possuía mais de 14GB de RAM disponível e ociosa. Correção: realocação dos parâmetros de cache e memória de trabalho do PostgreSQL para aproveitar a RAM já disponível no host. Resultado: melhora perceptível e significativa no tempo de resposta, sem necessidade de upgrade de hardware — evidência de que o gargalo era configuração subdimensionada, não capacidade física insuficiente.
+
 ## Stack
 
 | Tecnologia | Funcao |
@@ -109,5 +112,7 @@ scripts/
 - [x] Recuperacao de incidente de RAID sem perda de dados
 - [x] Corte de producao (virada do webhook do fornecedor externo)
 - [x] Diagnostico e correcao de performance (I/O, autovacuum)
+- [x] Backup automatizado + runbook de recuperacao
+- [x] Otimizacao de memoria (correcao de lentidao em tempo real)
 - [ ] Reconciliacao de dados do periodo de transicao
 - [ ] Migracao dos demais sistemas, apos aquisicao de servidor dedicado

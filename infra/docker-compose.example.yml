@@ -10,6 +10,14 @@ services:
       # Aponta para um volume de armazenamento de maior capacidade (ex: RAID montado no host)
       - /mnt/data/db-data:/var/lib/postgresql/data
     shm_size: "1g"
+    # Ajustar conforme a RAM disponivel no host. Valores padrao do Postgres
+    # sao conservadores demais para a maioria dos servidores modernos.
+    command: >
+      postgres
+      -c shared_buffers=4GB
+      -c effective_cache_size=10GB
+      -c work_mem=32MB
+      -c maintenance_work_mem=512MB
     restart: unless-stopped
     logging:
       driver: json-file
