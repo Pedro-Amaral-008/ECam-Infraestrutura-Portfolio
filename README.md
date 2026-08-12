@@ -78,6 +78,13 @@ Após a virada de produção, identificado via `iostat` um `%iowait` de até 98%
 **Otimização de memória (correção de lentidão em consultas de tempo real)**
 Relato recorrente de lentidão em uma funcionalidade de monitoramento em tempo real, presente desde a migração inicial. Diagnóstico: o banco estava configurado com parâmetros de memória no padrão de fábrica (cache de poucos megabytes), enquanto o host possuía mais de 14GB de RAM disponível e ociosa. Correção: realocação dos parâmetros de cache e memória de trabalho do PostgreSQL para aproveitar a RAM já disponível no host. Resultado: melhora perceptível e significativa no tempo de resposta, sem necessidade de upgrade de hardware — evidência de que o gargalo era configuração subdimensionada, não capacidade física insuficiente.
 
+**Diagnóstico de fila travada — diferenciando bloqueio real de lentidão de plano de execução**
+Após um período de acúmulo de eventos não processados (dezenas de milhões de itens pendentes), o sistema de processamento passou a travar de forma recorrente, mesmo após múltiplos reinícios. A hipótese inicial (lock de concorrência) foi descartada com uma técnica de diagnóstico mais precisa: `pg_blocking_pids()` revelou que as queries não tinham bloqueio real algum — o sintoma era leitura lenta de disco por um plano de execução ruim, escolhido pelo planejador por estatísticas desatualizadas frente ao volume real acumulado.
+
+Correção: limpeza do backlog acumulado, seguida de `VACUUM (ANALYZE)` para atualizar as estatísticas do planejador — o tempo de execução da query crítica caiu de horas (aparentando travamento) para dezenas de milissegundos. Complementarmente, ajustado o tamanho de lote de processamento na aplicação, já que o volume real recebido excedia a capacidade então configurada.
+
+Lição prática: um padrão de "múltiplas queries idênticas ativas simultaneamente" pode sugerir concorrência/lock à primeira vista, mas testar bloqueio real (`pg_blocking_pids`) antes de agir evita corrigir a causa errada.
+
 ## Stack
 
 | Tecnologia | Funcao |
@@ -114,5 +121,6 @@ scripts/
 - [x] Diagnostico e correcao de performance (I/O, autovacuum)
 - [x] Backup automatizado + runbook de recuperacao
 - [x] Otimizacao de memoria (correcao de lentidao em tempo real)
+- [x] Diagnostico avancado de fila travada (plano de execucao vs bloqueio real)
 - [ ] Reconciliacao de dados do periodo de transicao
 - [ ] Migracao dos demais sistemas, apos aquisicao de servidor dedicado
