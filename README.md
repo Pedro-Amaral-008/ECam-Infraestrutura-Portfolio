@@ -45,40 +45,52 @@ Essa separação foi uma decisão tomada **durante** a migração, não planejad
 ## Desafios tecnicos enfrentados e solucoes
 
 **Provisionamento sem conectividade inicial**
+
 Configuracao de rede Wi-Fi via Netplan em um ambiente sem acesso a internet no momento da instalacao. Resolucao de dependencia de pacote (`wpasupplicant` + dependencia transitiva) via instalacao offline por pendrive.
 
 **Armazenamento de grande volume**
+
 Configuracao de RAID 0 via `mdadm`, unindo dois discos fisicos em um unico volume logico, para acomodar dados de producao sem comprometer o disco de sistema (NVMe, capacidade limitada). Expansao de volume logico (LVM) para liberar espaco alocado nao utilizado.
 
 **Migracao de banco de dados de grande porte**
+
 `pg_dump`/`pg_restore` de um banco de producao com dado bruto na casa de ~200GB, via proxy de rede publica. Identificacao e correcao de timeout de conexao em transferencias de longa duracao (parametros de keepalive). Execucao resiliente de processos de dezenas de horas via `tmux`, protegendo contra interrupcao por queda de sessao remota.
 
 **Deteccao de anomalia de dados**
+
 Identificacao de uma unica tabela de fila de eventos, sem rotina de limpeza, responsavel por mais de um terco do volume total do banco de origem — achado relevante para o planejamento de retencao de dados no novo ambiente.
 
 **Adaptacao de estrategia em tempo real**
+
 Durante o restore, deteccao de que o volume de dados excedia a capacidade do disco de sistema (ver secao Arquitetura). Migracao da estrategia de armazenamento (bind mount para RAID) em pleno andamento do processo, sem perder o progresso ja realizado.
 
 **Containerizacao**
+
 Dockerfile multi-stage (build de frontend + runtime de backend Node.js). Orquestracao via Docker Compose. Gerenciamento de logs com rotacao, para evitar crescimento descontrolado de disco.
 
 **Planejamento de corte de producao**
+
 Estrategia de virada com sistema fornecedor externo (webhook) apontando para o novo ambiente. Plano de reconciliacao de dados para o intervalo entre a ultima copia de dados e o corte efetivo.
 
 **Exposição pública e HTTPS**
+
 Diagnóstico e contorno de defeito físico na porta Ethernet onboard do servidor, resolvido via adaptador USB-Ethernet com IP estático. Configuração de NAT (port forward) em firewall com múltiplas WANs. Registro DNS público apontando para o IP público. Certificado TLS automático via Caddy + Let's Encrypt. Diagnóstico e correção de NAT hairpin/loopback — cenário em que o acesso ao domínio público falha apenas quando originado de dentro da própria rede — resolvido via Split DNS no resolver do firewall, fazendo o mesmo domínio resolver para IP interno de dentro da rede e IP público de fora.
 
 **Recuperação de incidente sem perda de dados**
+
 Durante o transporte físico do servidor, o array RAID perdeu a assinatura (superblock) em um dos discos, levando o boot a modo de emergência. Recuperação via recriação do array com os mesmos parâmetros originais (nível, número de discos, tamanho de chunk, ordem dos discos), preservando o mapeamento físico dos dados. Validação pós-recuperação por contagem de registros no banco restaurado, conferida contra o volume original.
 
 
 **Diagnóstico e correção de performance pós-produção**
+
 Após a virada de produção, identificado via `iostat` um `%iowait` de até 98% e utilização de disco em 100%, mesmo com CPU e RAM ociosas — um padrão clássico de gargalo de I/O mascarado como "servidor lento". Causa raiz: o autovacuum do PostgreSQL nunca havia executado na tabela de maior volume (fila de eventos), acumulando centenas de milhares de tuplas mortas. Correção: VACUUM manual para liberar o acúmulo existente, seguido de ajuste dos parâmetros de autovacuum (reduzindo o scale factor de 20% para 2%) nas tabelas de maior rotatividade, e agendamento de manutenção preventiva semanal. Resultado: iowait caiu de 98% para ~15%, utilização de disco de 100% para ~35-40%.
 
 **Otimização de memória (correção de lentidão em consultas de tempo real)**
+
 Relato recorrente de lentidão em uma funcionalidade de monitoramento em tempo real, presente desde a migração inicial. Diagnóstico: o banco estava configurado com parâmetros de memória no padrão de fábrica (cache de poucos megabytes), enquanto o host possuía mais de 14GB de RAM disponível e ociosa. Correção: realocação dos parâmetros de cache e memória de trabalho do PostgreSQL para aproveitar a RAM já disponível no host. Resultado: melhora perceptível e significativa no tempo de resposta, sem necessidade de upgrade de hardware — evidência de que o gargalo era configuração subdimensionada, não capacidade física insuficiente.
 
 **Diagnóstico de fila travada — diferenciando bloqueio real de lentidão de plano de execução**
+
 Após um período de acúmulo de eventos não processados (dezenas de milhões de itens pendentes), o sistema de processamento passou a travar de forma recorrente, mesmo após múltiplos reinícios. A hipótese inicial (lock de concorrência) foi descartada com uma técnica de diagnóstico mais precisa: `pg_blocking_pids()` revelou que as queries não tinham bloqueio real algum — o sintoma era leitura lenta de disco por um plano de execução ruim, escolhido pelo planejador por estatísticas desatualizadas frente ao volume real acumulado.
 
 Correção: limpeza do backlog acumulado, seguida de `VACUUM (ANALYZE)` para atualizar as estatísticas do planejador — o tempo de execução da query crítica caiu de horas (aparentando travamento) para dezenas de milissegundos. Complementarmente, ajustado o tamanho de lote de processamento na aplicação, já que o volume real recebido excedia a capacidade então configurada.
