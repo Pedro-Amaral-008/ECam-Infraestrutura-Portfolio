@@ -97,6 +97,10 @@ Correção: limpeza do backlog acumulado, seguida de `VACUUM (ANALYZE)` para atu
 
 Lição prática: um padrão de "múltiplas queries idênticas ativas simultaneamente" pode sugerir concorrência/lock à primeira vista, mas testar bloqueio real (`pg_blocking_pids`) antes de agir evita corrigir a causa errada.
 
+**Integração de observabilidade com plataforma de monitoramento central**
+
+A rotina de backup passou a reportar seu resultado (sucesso/falha) para uma plataforma de observabilidade própria, via requisição HTTP ao final da execução — mesmo padrão já usado para monitorar outros servidores da infraestrutura. Isso adiciona um card de status visível em um painel central, além de alerta automático (Telegram) em caso de falha, com controle de repetição (cooldown). O status é rastreado por variável ao longo da execução do script, e não por leitura posterior de log — evitando capturar erro de execuções anteriores por engano.
+
 ## Stack
 
 | Tecnologia | Funcao |
@@ -134,5 +138,6 @@ scripts/
 - [x] Backup automatizado + runbook de recuperacao
 - [x] Otimizacao de memoria (correcao de lentidao em tempo real)
 - [x] Diagnostico avancado de fila travada (plano de execucao vs bloqueio real)
+- [x] Integracao com plataforma de observabilidade central (painel + alertas)
 - [ ] Reconciliacao de dados do periodo de transicao
 - [ ] Migracao dos demais sistemas, apos aquisicao de servidor dedicado
