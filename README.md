@@ -101,6 +101,12 @@ Lição prática: um padrão de "múltiplas queries idênticas ativas simultanea
 
 A rotina de backup passou a reportar seu resultado (sucesso/falha) para uma plataforma de observabilidade própria, via requisição HTTP ao final da execução — mesmo padrão já usado para monitorar outros servidores da infraestrutura. Isso adiciona um card de status visível em um painel central, além de alerta automático (Telegram) em caso de falha, com controle de repetição (cooldown). O status é rastreado por variável ao longo da execução do script, e não por leitura posterior de log — evitando capturar erro de execuções anteriores por engano.
 
+**Integração de segunda fonte de dados (arquitetura multi-provedor)**
+
+Onboarding de um segundo fornecedor de dados, operando em paralelo e de forma isolada do fluxo principal (arquitetura de coleta ativa via API, em contraste com o recebimento passivo via webhook usado pela fonte original). Trabalho envolvido: configuração de credenciais e variáveis de ambiente (repetindo um cuidado já identificado em integração anterior — a variável precisa ser explicitamente repassada na definição do container, não basta existir no arquivo de ambiente), aplicação de atualização de código distribuída em múltiplos commits, e validação de que uma eventual falha na fonte nova não afetaria o funcionamento da fonte original — confirmado na prática.
+
+Durante a estabilização, reincidência do mesmo padrão de consultas duplicadas sem cache/debounce já diagnosticado anteriormente, mitigado com nova correção no código da aplicação.
+
 ## Stack
 
 | Tecnologia | Funcao |
@@ -139,5 +145,6 @@ scripts/
 - [x] Otimizacao de memoria (correcao de lentidao em tempo real)
 - [x] Diagnostico avancado de fila travada (plano de execucao vs bloqueio real)
 - [x] Integracao com plataforma de observabilidade central (painel + alertas)
+- [x] Integracao de segunda fonte de dados (arquitetura multi-provedor)
 - [ ] Reconciliacao de dados do periodo de transicao
 - [ ] Migracao dos demais sistemas, apos aquisicao de servidor dedicado
